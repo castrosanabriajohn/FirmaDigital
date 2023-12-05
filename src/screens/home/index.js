@@ -197,9 +197,8 @@ const DocumentExplorer = () => {
         console.log('Long pressed item:', item);
         if (item.isDirectory) {
             // Pressed a directory, enter it
-            console.log('Before Navigation - Current Path:', currentPath);
-            setCurrentPath(`${currentPath}/${item.name}`);
-            console.log('After Navigation - Current Path:', currentPath);
+            console.log('Current Path:', currentPath);
+            deleteFile(item.name);
         } else {
             // Pressed a file, handle it
             console.log(`Handling file: ${item.name}`);
