@@ -236,6 +236,7 @@ const DocumentExplorer = () => {
 
     const renderDirectoryItem = ({ item }) => (
         <TouchableOpacity
+
             key={item.name}
             onPress={() => handleFileAction(item)}
             onLongPress={() => handleLongPress(item)}
@@ -253,6 +254,8 @@ const DocumentExplorer = () => {
             console.error('Error going back:', error.message, error.stack);
         }
     };
+
+    
 
     return (
         <View style={styles.container}>
@@ -364,7 +367,7 @@ const DocumentExplorer = () => {
 
             <View style={styles.footer}>
                 <TouchableOpacity onPress={goBack}>
-                    <Text style={styles.footerText}>Go Back </Text>
+                    <Text style={styles.footerText}>Go Back</Text>
                 </TouchableOpacity>
                 <TextInput
                     style={styles.input}
@@ -429,6 +432,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#fff',
     },
     footerText: {
+        paddingRight: 5,
         color: 'blue', // Customize the color of the "Go Back" text
     },
     buttonadd: {
