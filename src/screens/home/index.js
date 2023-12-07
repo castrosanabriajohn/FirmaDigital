@@ -12,6 +12,9 @@ import {
 import * as FileSystem from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
 import { useNavigation } from '@react-navigation/native';
+import Files from '../files'; 
+import Directory from '../directory';
+
 //import * as IntentLauncher from 'expo-intent-launcher';
 
 const DocumentExplorer = () => {
@@ -23,7 +26,6 @@ const DocumentExplorer = () => {
 	const navigation = useNavigation();
 	const [modalVisible, setModalVisible] = useState(false);
 	const [isDocumentPickerOpen, setDocumentPickerOpen] = useState(false);
-
 
 
 	useEffect(() => {
@@ -179,30 +181,28 @@ const DocumentExplorer = () => {
 		}
 	};
 
+	
 	const uploadFile = async () => {
-    if (!isDocumentPickerOpen) {
         try {
-            setDocumentPickerOpen(true);
-
             const result = await DocumentPicker.getDocumentAsync({
                 type: '*/*',
                 copyToCacheDirectory: false,
             });
-
+            console.log('File Result:', result);
             if (result.type === 'success') {
-                const { name, size, uri } = result;
-                console.log('File Details:', { name, size, uri });
-                const fileUri = `${currentPath}/${name}`;
-                await FileSystem.copyAsync({ from: uri, to: fileUri });
+                const fileContent = await FileSystem.readAsStringAsync(result.uri, {
+                    encoding: FileSystem.EncodingType.Base64,
+                });
+                const filePath = `${currentPath}/${result.name}`;
+                await FileSystem.writeAsStringAsync(filePath, fileContent, {
+                    encoding: FileSystem.EncodingType.Base64,
+                });
                 listContents(currentPath);
             }
         } catch (error) {
             console.error('Error uploading file:', error);
-        } finally {
-            setDocumentPickerOpen(false);
         }
-    }
-};
+    };
 
 
 	const deleteFile = async (fileName) => {
@@ -215,12 +215,22 @@ const DocumentExplorer = () => {
 		}
 	};
 
+	const deleteDirectory = async (directoryName) => {
+		try {
+			const directoryPath = `${currentPath}/${directoryName}`;
+			await FileSystem.deleteAsync(directoryPath);
+			listContents(currentPath);
+		} catch (error) {
+		console.error('Error deleting directory:', error);
+		}
+	};
+
 	const handleLongPress = (item) => {
 		console.log('Long pressed item:', item);
 		if (item.isDirectory) {
 			// Pressed a directory, enter it
 			console.log('Current Path:', currentPath);
-			deleteFile(item.name);
+			deleteDirectory(item.name);
 		} else {
 			// Pressed a file, handle it
 			console.log(`Handling file: ${item.name}`);
@@ -259,7 +269,6 @@ const DocumentExplorer = () => {
 
 	const renderDirectoryItem = ({ item }) => (
 		<TouchableOpacity
-
 			key={item.name}
 			onPress={() => handleFileAction(item)}
 			onLongPress={() => handleLongPress(item)}
@@ -330,7 +339,7 @@ const DocumentExplorer = () => {
 								</TouchableOpacity>
 							</View>
 							<View style={{
-								flexDirection: 'row',
+								flexDirection: 'row'
 							}}>
 								<TouchableOpacity style={styles.buttonfiles}
 									onPress={() => {
@@ -355,18 +364,17 @@ const DocumentExplorer = () => {
 									<Text style={{ color: '#fff', fontSize: 30 }}>Upload</Text>
 								</TouchableOpacity>
 							</View>
-							<TextInput placeholder="Enter Name" style={{
+							<TextInput placeholder="Enter Name" placeholderTextColor="gray" style={{
 								width: '90%',
 								height: 50,
 								borderWidth: 1,
 								alignSelf: 'center',
-								marginTop: 50,
+								marginTop: 30,
 								paddingLeft: 20,
-								borderRadius: 10
+								borderRadius: 10,
 							}}
 								value={newFileName}
 								onChangeText={(text) => setNewFileName(text)}
-
 							></TextInput>
 							<TouchableOpacity style={{
 								marginTop: 20,
@@ -440,6 +448,7 @@ const styles = StyleSheet.create({
 		borderWidth: 1,
 		marginRight: 8,
 		padding: 8,
+		borderRadius: 5,
 	},
 	footer: {
 		position: 'absolute',
@@ -480,7 +489,7 @@ const styles = StyleSheet.create({
 		backgroundColor: '#fff',
 		marginTop: 0,
 		width: '90%',
-		height: 325,
+		height: 290,
 		borderRadius: 10
 	},
 	buttonfiles: {
