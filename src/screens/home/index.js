@@ -8,13 +8,13 @@ import {
 	StyleSheet,
 	StatusBar,
 	Modal,
+	ScrollView,
 } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
 import { useNavigation } from '@react-navigation/native';
 import Files from '../files'; 
 import Directory from '../directory';
-
 //import * as IntentLauncher from 'expo-intent-launcher';
 
 const DocumentExplorer = () => {
@@ -181,29 +181,36 @@ const DocumentExplorer = () => {
 		}
 	};
 
-	
 	const uploadFile = async () => {
-        try {
-            const result = await DocumentPicker.getDocumentAsync({
-                type: '*/*',
-                copyToCacheDirectory: false,
-            });
-            console.log('File Result:', result);
-            if (result.type === 'success') {
-                const fileContent = await FileSystem.readAsStringAsync(result.uri, {
-                    encoding: FileSystem.EncodingType.Base64,
-                });
-                const filePath = `${currentPath}/${result.name}`;
-                await FileSystem.writeAsStringAsync(filePath, fileContent, {
-                    encoding: FileSystem.EncodingType.Base64,
-                });
-                listContents(currentPath);
-            }
-        } catch (error) {
-            console.error('Error uploading file:', error);
-        }
-    };
+		try {
+			const result = await DocumentPicker.getDocumentAsync({
+				type: '*/*',
+			});
 
+			console.log('result', result);
+
+			if (result.type === 'success') {
+				const fileUri = result.uri;
+				const fileName = result.name.trim(); // Eliminar espacios antes y después del nombre del archivo
+				const fileExtension = fileName.split('.').pop(); // Utilizar split con límite de 2
+				const fileToMove = `${FileSystem.documentDirectory}${fileName}`;
+
+				console.log('fileToMove', fileToMove);
+				console.log('fileUri', fileUri);
+				console.log('fileName', fileName);
+				console.log('fileExtension', fileExtension);
+
+				await FileSystem.copyAsync({
+					from: fileUri,
+					to: fileToMove,
+				});
+
+				listContents(currentPath);
+			}
+		} catch (error) {
+			onsole.error('Error uploading file:', error);
+		}
+	};
 
 	const deleteFile = async (fileName) => {
 		try {
@@ -221,7 +228,7 @@ const DocumentExplorer = () => {
 			await FileSystem.deleteAsync(directoryPath);
 			listContents(currentPath);
 		} catch (error) {
-		console.error('Error deleting directory:', error);
+			console.error('Error deleting directory:', error);
 		}
 	};
 
@@ -239,33 +246,17 @@ const DocumentExplorer = () => {
 		listContents(currentPath);
 	};
 
-
-	const handleFileAction = async (content) => {
-		if (content.isDirectory) {
-			// Pressed a directory, enter it
-			console.log('Before Navigation - Current Path:', currentPath);
-			setCurrentPath(`${currentPath}/${content.name}`);
-			console.log('After Navigation - Current Path:', currentPath);
-		} else {
-			// Pressed a file, handle it
-			if (content.name.endsWith('.pdf')) {
-				console.log(`Handling PDF file: ${content.name}`);
-				try {
-					const pdfFilePath = `${currentPath}/${content.name}`;
-					const pdfContent = await FileSystem.readAsStringAsync(pdfFilePath, {
-						encoding: FileSystem.EncodingType.UTF8,
-					});
-					console.log('PDF Content:', pdfContent);
-					// ... (rest of the code)
-				} catch (error) {
-					console.error('Error reading PDF file:', error);
-				}
-			} else {
-				console.log(`Unsupported file type: ${content.name}`);
-			}
-		}
-		
-	};
+	const handleFileAction = (item) => {
+        console.log('Pressed item:', item);
+        if (item.isDirectory) {
+            // Pressed a directory, enter it
+            console.log('Current Path:', currentPath);
+            setCurrentPath(`${currentPath}/${item.name}`);
+        } else {
+            // Pressed a file, handle it
+            console.log(`Handling file: ${item.name}`);
+        }
+    };
 
 	const renderDirectoryItem = ({ item }) => (
 		<TouchableOpacity
@@ -279,32 +270,30 @@ const DocumentExplorer = () => {
 	);
 
 	const goBack = () => {
-		try {
-			const parentPath = currentPath.substring(0, currentPath.lastIndexOf('/'));
-			setCurrentPath(parentPath);
-		} catch (error) {
-			console.error('Error going back:', error.message, error.stack);
-		}
-	};
-
-	
+        if (currentPath === FileSystem.documentDirectory) {
+            navigation.goBack();
+        } else {
+            setCurrentPath(currentPath.substring(0, currentPath.lastIndexOf('/')));
+        }
+    };
 
 	return (
 		<View style={styles.container}>
 			<StatusBar backgroundColor="#2c3e50" barStyle="default" />
 			<Text style={styles.title}>Document Explorer</Text>
-
+			<ScrollView style={styles.scrollView}>
 			{contents.map((item) => renderDirectoryItem({ item }))}
-
-
-
-			<View style={{ flex: 1 }}>
-				<TouchableOpacity style={styles.buttonadd}
+			<TouchableOpacity style={styles.buttonadd}
 					onPress={() => {
 						setModalVisible(true);
 					}}>
 					<Text style={{ color: '#fff', fontSize: 30 }}>+</Text>
-				</TouchableOpacity>
+			</TouchableOpacity>
+			</ScrollView>
+
+
+			<View>
+				
 				<Modal transparent visible={modalVisible}
 					onRequestClose={() => {
 						setModalVisible(false);
@@ -394,7 +383,7 @@ const DocumentExplorer = () => {
 					</View>
 				</Modal>
 			</View>
-
+			
 
 			<View style={styles.footer}>
 				<TouchableOpacity onPress={goBack}>
@@ -417,7 +406,8 @@ const DocumentExplorer = () => {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		padding: 16,
+		padding: 10,
+		paddingbottom: 10,
 		backgroundColor: '#fff',
 	},
 	title: {
@@ -425,6 +415,9 @@ const styles = StyleSheet.create({
 		marginBottom: 20,
 		textAlign: 'center',
 		marginTop: StatusBar.currentHeight + 40 || 0,
+	},
+	scrollView: {
+		marginBottom: 73,
 	},
 	directoryItemContainer: {
 		alignItems: 'center',
@@ -468,10 +461,10 @@ const styles = StyleSheet.create({
 		color: 'blue', // Customize the color of the "Go Back" text
 	},
 	buttonadd: {
-		position: 'absolute',
-		top: 10,
-		right: 0,
-		botton: 0,
+		position: 'relative',
+		top: 0,
+		left: 0,
+		botton: 10,
 		backgroundColor: '#000',
 		width: 50,
 		height: 50,
