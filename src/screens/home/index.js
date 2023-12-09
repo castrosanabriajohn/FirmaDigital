@@ -9,12 +9,13 @@ import {
 	StatusBar,
 	Modal,
 	ScrollView,
+	Alert
 } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
 import { useNavigation } from '@react-navigation/native';
-import Files from '../files'; 
-import Directory from '../directory';
+//import Files from '../files'; 
+//import Directory from '../directory';
 //import * as IntentLauncher from 'expo-intent-launcher';
 
 const DocumentExplorer = () => {
@@ -26,6 +27,8 @@ const DocumentExplorer = () => {
 	const navigation = useNavigation();
 	const [modalVisible, setModalVisible] = useState(false);
 	const [isDocumentPickerOpen, setDocumentPickerOpen] = useState(false);
+	const [confirmationModalVisible, setConfirmationModalVisible] = useState(false);
+	const [itemToDelete, setItemToDelete] = useState(null);
 
 
 	useEffect(() => {
@@ -232,19 +235,24 @@ const DocumentExplorer = () => {
 		}
 	};
 
+	const handleDeleteConfirmation = () => {
+  if (itemToDelete) {
+    if (itemToDelete.isDirectory) {
+      // Handle directory deletion
+      deleteDirectory(itemToDelete.name);
+    } else {
+      // Handle file deletion
+      deleteFile(itemToDelete.name);
+    }
+    setItemToDelete(null);
+  }
+  setConfirmationModalVisible(false);
+};
+
 	const handleLongPress = (item) => {
-		console.log('Long pressed item:', item);
-		if (item.isDirectory) {
-			// Pressed a directory, enter it
-			console.log('Current Path:', currentPath);
-			deleteDirectory(item.name);
-		} else {
-			// Pressed a file, handle it
-			console.log(`Handling file: ${item.name}`);
-			deleteFile(item.name);
-		}
-		listContents(currentPath);
-	};
+  setItemToDelete(item);
+  setConfirmationModalVisible(true);
+};
 
 	const handleFileAction = (item) => {
         console.log('Pressed item:', item);
@@ -302,6 +310,8 @@ const DocumentExplorer = () => {
 						<View style={styles.whitecover}>
 							<View style={{
 								flexDirection: 'row',
+								paddingRight: 11,
+								paddingLeft: 10,
 							}}>
 
 								<TouchableOpacity style={styles.buttonfiles}
@@ -309,7 +319,7 @@ const DocumentExplorer = () => {
 										createPDF(newFileName);
 										setModalVisible(false);
 									}}>
-									<Text style={{ color: '#fff', fontSize: 30 }}>.PDF</Text>
+									<Text style={{ color: '#fff', fontSize: 25 }}>.PDF</Text>
 								</TouchableOpacity>
 								<TouchableOpacity style={styles.buttonfiles}
 									onPress={() => {
@@ -317,18 +327,20 @@ const DocumentExplorer = () => {
 										setModalVisible(false);
 									}}>
 
-									<Text style={{ color: '#fff', fontSize: 30 }}>.Docx</Text>
+									<Text style={{ color: '#fff', fontSize: 25 }}>.Docx</Text>
 								</TouchableOpacity>
 								<TouchableOpacity style={styles.buttonfiles}
 									onPress={() => {
 										createExcel();
 										setModalVisible(false);
 									}}>
-									<Text style={{ color: '#fff', fontSize: 30 }}>.Xlsx</Text>
+									<Text style={{ color: '#fff', fontSize: 25 }}>.Xlsx</Text>
 								</TouchableOpacity>
 							</View>
 							<View style={{
-								flexDirection: 'row'
+								flexDirection: 'row',
+								paddingRight: 11,
+								paddingLeft: 10,
 							}}>
 								<TouchableOpacity style={styles.buttonfiles}
 									onPress={() => {
@@ -336,21 +348,21 @@ const DocumentExplorer = () => {
 										setModalVisible(false);
 									}}>
 
-									<Text style={{ color: '#fff', fontSize: 30 }}>.Pptx</Text>
+									<Text style={{ color: '#fff', fontSize: 25 }}>.Pptx</Text>
 								</TouchableOpacity>
 								<TouchableOpacity style={styles.buttonfiles}
 									onPress={() => {
 										createText();
 										setModalVisible(false);
 									}}>
-									<Text style={{ color: '#fff', fontSize: 30 }}>.Txt</Text>
+									<Text style={{ color: '#fff', fontSize: 25 }}>.Txt</Text>
 								</TouchableOpacity>
 								<TouchableOpacity style={styles.buttonfiles}
 									onPress={() => {
 										uploadFile();
 										setModalVisible(false);
 									}}>
-									<Text style={{ color: '#fff', fontSize: 30 }}>Upload</Text>
+									<Text style={{ color: '#fff', fontSize: 25 }}>Upload</Text>
 								</TouchableOpacity>
 							</View>
 							<TextInput placeholder="Enter Name" placeholderTextColor="gray" style={{
@@ -381,8 +393,32 @@ const DocumentExplorer = () => {
 							</TouchableOpacity>
 						</View>
 					</View>
-				</Modal>
-			</View>
+					</Modal>
+					<Modal transparent visible={confirmationModalVisible} onRequestClose={() => setConfirmationModalVisible(false)}>
+					  <View style={styles.blackgoundblack}>
+						<View style={styles.whitecover}>
+							<Text style={{ fontSize: 30, paddingTop: 30, textAlign: 'center' }}>Are you sure to delete: {itemToDelete?.name}?</Text>
+							<View style={{ flexDirection: 'row', marginTop: 30 }}>
+							<TouchableOpacity
+							  style={styles.buttonfiles}
+							  onPress={() => {
+								handleDeleteConfirmation();
+							  }}>
+							  <Text style={{ color: '#fff', fontSize: 30 }}>Yes</Text>
+							</TouchableOpacity>
+							<TouchableOpacity
+							  style={styles.buttonfiles}
+							  onPress={() => {
+								setItemToDelete(null);
+								setConfirmationModalVisible(false);
+							  }}>
+							  <Text style={{ color: '#fff', fontSize: 30 }}>No</Text>
+							</TouchableOpacity>
+						  </View>
+						</View>
+					  </View>
+					</Modal>
+				</View>
 			
 
 			<View style={styles.footer}>
@@ -480,19 +516,19 @@ const styles = StyleSheet.create({
 	},
 	whitecover: {
 		backgroundColor: '#fff',
-		marginTop: 0,
+		marginTop: 0, // Center the modal vertically
 		width: '90%',
 		height: 290,
-		borderRadius: 10
-	},
+		borderRadius: 10,
+		alignSelf: 'center', // Center the modal horizontally 
+  },
 	buttonfiles: {
 		marginBottom: 10,
-		marginRight: 10,
+		marginLeft: 'auto',  
+		marginRight: 'auto', 
 		top: 20,
-		right: 20,
-		left: 15,
 		backgroundColor: '#e0e0e0',
-		width: 100,
+		width: '30%',
 		height: 50,
 		borderRadius: 10,
 		justifyContent: 'center',
