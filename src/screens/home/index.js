@@ -218,6 +218,28 @@ const DocumentExplorer = () => {
         }
     };
 
+    //editar nombre del directorio
+    const editDirectory = async (directoryName) => {
+        try {
+            const directoryPath = `${currentPath}/${directoryName}`;
+            await FileSystem.updateAsync(directoryPath, { name: newDirectoryName });
+            listContents(currentPath);
+        } catch (error) {
+            console.error('Error editing directory:', error);
+        }
+    };
+
+    //editar nombre del archivo
+    const editFile = async (fileName) => {
+        try {
+            const filePath = `${currentPath}/${fileName}`;
+            await FileSystem.updateAsync(filePath, { name: newFileName });
+            listContents(currentPath);
+        } catch (error) {
+            console.error('Error editing file:', error);
+        }
+    };
+
     const openFile = async (fileName) => {
         try {
             const filePath = `${currentPath}/${fileName}`;
