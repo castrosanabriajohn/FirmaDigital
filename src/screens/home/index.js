@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Linking,  } from 'react';
 import {
     View,
     Text,
@@ -9,11 +9,13 @@ import {
     StatusBar,
     Modal,
     ScrollView,
-    Alert
+    Alert,
+    Image,
 } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
 import { useNavigation } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 //import Files from '../files';
 //import Directory from '../directory';
 
@@ -28,6 +30,8 @@ const DocumentExplorer = () => {
     const [isDocumentPickerOpen, setDocumentPickerOpen] = useState(false);
     const [confirmationModalVisible, setConfirmationModalVisible] = useState(false);
     const [itemToDelete, setItemToDelete] = useState(null);
+    const [selectedDocumentPath, setSelectedDocumentPath] = useState(null);
+    const [showDocument, setShowDocument] = useState(false);
 
 
     useEffect(() => {
@@ -44,16 +48,13 @@ const DocumentExplorer = () => {
                         const info = await FileSystem.getInfoAsync(contentPath);
                         return { name: item, isDirectory: info.isDirectory };
                     } catch (error) {
-                        // Ignorar directorios no legibles
                         console.error(`Error reading ${contentPath}:`, error);
                         return null;
                     }
                 })
             );
 
-            // Filtrar directorios nulos (no legibles)
             const filteredContent = contentDetails.filter((item) => item !== null);
-
             setContents(filteredContent);
         } catch (error) {
             console.error('Error reading contents:', error);
@@ -62,28 +63,46 @@ const DocumentExplorer = () => {
 
 
     const createDirectory = async () => {
+        if (newDirectoryName.trim() !== '') {
+            try {
+                const newDirPath = `${currentPath}/${newDirectoryName}`;
+                await FileSystem.makeDirectoryAsync(newDirPath);
+                setNewDirectoryName('');
+                listContents(currentPath);
+            } catch (error) {
+                console.error('Error creating directory:', error);
+            }
+        } else {
+            console.error('Error creating directory: Name is empty');
+        }
+    };
+
+    const saveFileInfoToStorage = async (fileName, filePath) => {
         try {
-            const newDirPath = `${currentPath}/${newDirectoryName}`;
-            console.log('New Directory Path:', newDirPath);
+            const fileInfo = await AsyncStorage.getItem('fileInfo') || '{}';
+            const fileInfoObject = JSON.parse(fileInfo);
 
-            // Create the new directory
-            await FileSystem.makeDirectoryAsync(newDirPath);
+            // Almacenar información del nuevo archivo
+            fileInfoObject[fileName] = filePath;
 
-            // Create placeholder PDF files
-            /*const pdfFileNames = ['document1.pdf', 'document2.pdf', 'document3.pdf'];
-            await Promise.all(
-                pdfFileNames.map(async (pdfFileName) => {
-                    const pdfFilePath = `${newDirPath}/${pdfFileName}`;
-                    await FileSystem.writeAsStringAsync(pdfFilePath, 'Sample PDF content', {
-                        encoding: FileSystem.EncodingType.UTF8,
-                    });
-                })
-            );
-            */
-            setNewDirectoryName('');
-            listContents(currentPath);
+            // Guardar la información actualizada
+            await AsyncStorage.setItem('fileInfo', JSON.stringify(fileInfoObject));
         } catch (error) {
-            console.error('Error creating directory:', error);
+            console.error('Error saving file info:', error);
+        }
+    };
+
+    // Función para obtener información de un archivo desde AsyncStorage
+    const getFileInfoFromStorage = async (fileName) => {
+        try {
+            const fileInfo = await AsyncStorage.getItem('fileInfo') || '{}';
+            const fileInfoObject = JSON.parse(fileInfo);
+
+            // Obtener la información del archivo específico
+            return fileInfoObject[fileName];
+        } catch (error) {
+            console.error('Error getting file info:', error);
+            return null;
         }
     };
 
@@ -92,16 +111,12 @@ const DocumentExplorer = () => {
         if (newFileName !== '') {
             try {
                 const pdffileName = newFileName + '.pdf';
-
                 const pdfFilePath = `${currentPath}/${pdffileName}`;
-                await FileSystem.writeAsStringAsync(pdfFilePath, 'Sample PDF content', {
-                    encoding: FileSystem.EncodingType.UTF8,
-                });
-                listContents(currentPath);
-                setNewFileName('');
 
-                
+                // Guardar información en AsyncStorage
+                await saveFileInfoToStorage(pdffileName, pdfFilePath);
 
+                // Resto del código...
             } catch (error) {
                 console.error('Error creating pdf:', error);
             }
@@ -189,85 +204,56 @@ const DocumentExplorer = () => {
 
     const uploadFile = async () => {
         try {
-            const result = await DocumentPicker.getDocumentAsync({
-                type: '*/*',
-            });
+            const existingDocuments = await AsyncStorage.getItem(folder);
+            let documents = existingDocuments ? JSON.parse(existingDocuments) : [];
+            documents.push(document);
+            await AsyncStorage.setItem(folder, JSON.stringify(documents));
+        } catch (error) {
+            console.error('Error saving document:', error);
+        } 
+    };
 
-            console.log('result', result);
-
-            if (result.type === 'success') {
-                const fileUri = result.uri;
-                const fileName = result.name.trim(); // Eliminar espacios antes y después del nombre del archivo
-                const fileExtension = fileName.split('.').pop(); // Utilizar split con límite de 2
-                const fileToMove = `${FileSystem.documentDirectory}${fileName}`;
-
-                console.log('fileToMove', fileToMove);
-                console.log('fileUri', fileUri);
-                console.log('fileName', fileName);
-                console.log('fileExtension', fileExtension);
-
-                await FileSystem.copyAsync({
-                    from: fileUri,
-                    to: fileToMove,
-                });
-
+    const editItem = async (oldName, editFunction) => {
+        const newName = await promptUserForNewName(oldName);
+        if (newName && newName.trim() !== '') {
+            try {
+                const oldPath = `${currentPath}/${oldName}`;
+                const newPath = `${currentPath}/${newName}`;
+                await editFunction(oldPath, newPath);
                 listContents(currentPath);
+            } catch (error) {
+                console.error(`Error editing ${oldName}:`, error);
             }
-        } catch (error) {
-            onsole.error('Error uploading file:', error);
-        }
-    };
-
-    //editar nombre del directorio
-    const editDirectory = async (directoryName) => {
-        try {
-            const directoryPath = `${currentPath}/${directoryName}`;
-            await FileSystem.updateAsync(directoryPath, { name: newDirectoryName });
-            listContents(currentPath);
-        } catch (error) {
-            console.error('Error editing directory:', error);
-        }
-    };
-
-    //editar nombre del archivo
-    const editFile = async (fileName) => {
-        try {
-            const filePath = `${currentPath}/${fileName}`;
-            await FileSystem.updateAsync(filePath, { name: newFileName });
-            listContents(currentPath);
-        } catch (error) {
-            console.error('Error editing file:', error);
+        } else {
+            console.error('Error editing: Name is empty');
         }
     };
 
     const openFile = async (fileName) => {
         try {
             const filePath = `${currentPath}/${fileName}`;
-            const fileUri = `${FileSystem.documentDirectory}${fileName}`;
             const fileExtension = fileName.split('.').pop();
             console.log('Opening file:', filePath);
 
             if (fileExtension === 'pdf') {
                 // Abrir PDF
-                navigation.navigate('FileViewer', { filePath, fileUri });
-            } else if (fileExtension === 'docx') {
-                // Abrir Word
-                navigation.navigate('FileViewer', { filePath, fileUri });
-            } else if (fileExtension === 'xlsx') {
-                // Abrir Excel
-                navigation.navigate('FileViewer', { filePath, fileUri });
-            } else if (fileExtension === 'pptx') {
-                // Abrir PowerPoint
-                navigation.navigate('FileViewer', { filePath, fileUri });
+                navigation.navigate('FileViewer', { filePath });
+            } else if (fileExtension === 'docx' || fileExtension === 'xlsx' || fileExtension === 'pptx') {
+                // Abrir documentos de Word, Excel, PowerPoint
+                // Utiliza react-native-doc-viewer o una biblioteca similar para manejar estos tipos de archivos
+                // Puedes redirigir al visor del sistema o implementar tu propio visor
+                Linking.openURL(filePath);
             } else if (fileExtension === 'txt') {
-                // Abrir Texto
-                navigation.navigate('FileViewer', { filePath, fileUri });
+                // Abrir archivo de texto
+                navigation.navigate('FileViewer', { filePath });
             } else {
-                // Abrir otros archivos
-                navigation.navigate('FileViewer', { filePath, fileUri });
+                // Si no es un tipo de archivo conocido, intentar abrir con el visor del sistema
+                Linking.openURL(filePath);
             }
-        } catch (error) { }
-    }
+        } catch (error) {
+            console.error('Error opening file:', error);
+        }
+    };
 
     const deleteFile = async (fileName) => {
         try {
@@ -291,16 +277,13 @@ const DocumentExplorer = () => {
 
     const handleDeleteConfirmation = () => {
         if (itemToDelete) {
-            if (itemToDelete.isDirectory) {
-                // Handle directory deletion
-                deleteDirectory(itemToDelete.name);
-            } else {
-                // Handle file deletion
-                deleteFile(itemToDelete.name);
-            }
+            const { isDirectory, name } = itemToDelete;
+            const deleteFunction = isDirectory ? deleteDirectory : deleteFile;
+            deleteFunction(name);
             setItemToDelete(null);
         }
         setConfirmationModalVisible(false);
+        setShowDocument(false);
     };
 
     const handleLongPress = (item) => {
@@ -345,6 +328,11 @@ const DocumentExplorer = () => {
             <StatusBar backgroundColor="#2c3e50" barStyle="default" />
             
             <ScrollView style={styles.scrollView}>
+            {showDocument && (
+    <View style={styles.documentContainer}>
+        <Image source={{ uri: selectedDocumentPath }} style={styles.documentImage} />
+    </View>
+)}
                 {contents.map((item) => renderDirectoryItem({ item }))}
                 <TouchableOpacity style={styles.buttonadd}
                     onPress={() => {
