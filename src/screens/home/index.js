@@ -20,7 +20,8 @@ import {
     deleteObject,
     getDownloadURL,
     move,
-    uploadBytes
+    uploadBytes,
+    uploadBytesResumable
 } from 'firebase/storage';
 import { useNavigation } from '@react-navigation/native';
 import { appfirebase } from '../../storage/firestorage';
@@ -44,7 +45,7 @@ const DocumentExplorer = () => {
     const [itemToDelete, setItemToDelete] = useState(null);
     const [selectedDocumentPath, setSelectedDocumentPath] = useState(null);
     const [showDocument, setShowDocument] = useState(false);
-    const storage = getStorage(appfirebase);
+    const Almacenamiento = getStorage(appfirebase);
 
     useEffect(() => {
         listContents(currentPath);
@@ -55,7 +56,7 @@ const DocumentExplorer = () => {
 
     const listContents = async (path) => {
         try {
-            const storageRef = ref(storage, path);
+            const storageRef = ref(Almacenamiento, path);
             const result = await listAll(storageRef);
 
             const contentDetails = await Promise.all(
@@ -78,7 +79,7 @@ const DocumentExplorer = () => {
         if (newDirectoryName.trim() !== '') {
             try {
                 const newDirPath = `${currentPath}/${newDirectoryName}/`; // Add a trailing slash for Firebase Storage path
-                const newDirRef = ref(storage, newDirPath);
+                const newDirRef = ref(Almacenamiento, newDirPath);
 
                 // Create a placeholder file inside the folder to simulate its existence
                 await uploadString(newDirRef, '');
@@ -93,7 +94,9 @@ const DocumentExplorer = () => {
         }
     };
 
-    const createPDF = async () => {
+    const createPDF = async (newFileName) => {
+        const pdfFileName = `${newFileName}.pdf`;
+
         const htmlContent = `
             <html>
                 <body>
@@ -102,25 +105,39 @@ const DocumentExplorer = () => {
                 </body>
             </html>
         `;
+
         try {
             const { uri } = await Print.printToFileAsync({ html: htmlContent });
 
             if (Platform.OS === 'ios') {
                 await MediaLibrary.saveToLibraryAsync(uri);
             } else {
-                    try {
-                        await FileSystem.copyAsync({ from: uri, to: FileSystem.documentDirectory + 'generated2.pdf' });
-                        console.log("success", uri);
-                    } catch(error) {
-                        console.error('Error creating file:', error);
-                    }
-                    // Refresh contents after generating PDF
-                    listContents(currentPath);
+                try {
+                    await FileSystem.copyAsync({ from: uri, to: FileSystem.documentDirectory + pdfFileName });
+
+                    // Subir el archivo PDF a Firebase Storage en el directorio actual (currentPath)
+                    const response = await fetch(uri);
+                    const blob = await response.blob();
+
+                    // Construye la referencia al directorio actual
+                    const storageRef = ref(Almacenamiento, `${currentPath}/${pdfFileName}`);
+
+                    // Sube el archivo PDF al directorio actual
+                    await uploadBytes(storageRef, blob);
+
+                    console.log(`PDF '${pdfFileName}' uploaded successfully to Firebase Storage in '${currentPath}'`);
+
+                } catch (error) {
+                    console.error('Error creating or uploading file:', error);
+                }
             }
         } catch (error) {
             console.error('Error generating PDF:', error);
         }
     };
+
+
+
 
     const createWord = async () => {
         try {
@@ -238,43 +255,34 @@ const DocumentExplorer = () => {
         }
     };
 
-    
+
 
     const uploadFile = async () => {
-        try {
-            const result = await DocumentPicker.getDocumentAsync({
-                type: '*/*',
-                copyToCacheDirectory: false,
-            });
-
-            const { name, size, uri } = result ?? {};
-
-            console.log('File Details:', { name, size, uri });
-
-            // Specify the path in Firebase Storage (adjust the path as needed)
-            const filePath = `${currentPath}/${name}`;
-
-            // Read the file content as bytes
-            const fileBytes = await FileSystem.readAsStringAsync(uri, {
-                encoding: FileSystem.EncodingType.Base64,
-            });
-
-            // Upload the file to Firebase Storage
-            await uploadBytes(storage.child(filePath), fileBytes, {
-                contentType: 'application/octet-stream', // Adjust based on the file type
-            });
-
-            // Get the download URL of the uploaded file
-            const downloadURL = await getDownloadURL(storageRef.child(filePath));
-
-            console.log('File uploaded successfully. Download URL:', downloadURL);
-
-            // Update the content list after uploading the file
-            listContents(currentPath);
-        } catch (error) {
-            console.error('Error uploading file:', error);
+        let result = await DocumentPicker.getDocumentAsync({})
+        if (result != null) {
+            const r = await fetch(result.uri);
+            const b = await r.blob();
+            setFileName(result.name);
+            setBlobFile(b)
+            //setIsChoosed(true) 
+            if (!blobFile) return;
+            const sotrageRef = ref(storage, `${currentPath}/${fileName}`); //LINE A
+            const uploadTask = uploadBytesResumable(sotrageRef, blobFile); //LINE B
+            uploadTask.on(
+                "state_changed", null,
+                (error) => console.log(error),
+                () => {
+                    getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => { //LINE C
+                        console.log("File available at", downloadURL);
+                        isUploadCompleted(true)
+                        return downloadURL
+                    });
+                }
+            );
         }
-    };
+
+
+    }
 
     const editItem = async (oldName, newName) => {
         try {
@@ -313,7 +321,7 @@ const DocumentExplorer = () => {
                 // Abrir archivo de texto
                 navigation.navigate('FileViewer', { filePath });
             } else {
-                
+                Linking.openURL(filePath);
             }
         } catch (error) {
             console.error('Error opening file:', error);
@@ -323,7 +331,7 @@ const DocumentExplorer = () => {
     const deleteFile = async (fileName) => {
         try {
             const filePath = `${currentPath}/${fileName}`;
-            const fileRef = ref(storage, filePath);
+            const fileRef = ref(Almacenamiento, filePath);
 
             // Delete the file from Firebase Storage
             await deleteObject(fileRef);
@@ -338,7 +346,7 @@ const DocumentExplorer = () => {
     const deleteDirectory = async (directoryName) => {
         try {
             const directoryPath = `${currentPath}/${directoryName}/`; // Add a trailing slash for Firebase Storage path
-            const directoryRef = ref(storage, directoryPath);
+            const directoryRef = ref(Almacenamiento, directoryPath);
 
             // List all items in the directory
             const items = await listAll(directoryRef);
