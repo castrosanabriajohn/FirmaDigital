@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Linking,  } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -9,22 +9,30 @@ import {
     StatusBar,
     Modal,
     ScrollView,
-    Alert,
     Image,
+    Linking
 } from 'react-native';
-import * as FileSystem from 'expo-file-system';
-import * as DocumentPicker from 'expo-document-picker';
+import {
+    getStorage,
+    ref,
+    listAll,
+    uploadString,
+    deleteObject,
+    getDownloadURL,
+    move,
+    uploadBytes
+} from 'firebase/storage';
 import { useNavigation } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { appfirebase } from '../../storage/firestorage';
 import * as Print from 'expo-print';
 
-//import Files from '../files';
-//import Directory from '../directory';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 
 import * as MediaLibrary from 'expo-media-library';
 
 const DocumentExplorer = () => {
-    const [currentPath, setCurrentPath] = useState(FileSystem.documentDirectory);
+    const [currentPath, setCurrentPath] = useState('/');
     const [contents, setContents] = useState([]);
     const [newDirectoryName, setNewDirectoryName] = useState('');
     const [newFileName, setNewFileName] = useState('');
@@ -36,32 +44,32 @@ const DocumentExplorer = () => {
     const [itemToDelete, setItemToDelete] = useState(null);
     const [selectedDocumentPath, setSelectedDocumentPath] = useState(null);
     const [showDocument, setShowDocument] = useState(false);
-
+    const storage = getStorage(appfirebase);
 
     useEffect(() => {
         listContents(currentPath);
     }, [currentPath]);
 
+
+
+
     const listContents = async (path) => {
         try {
-            const result = await FileSystem.readDirectoryAsync(path);
+            const storageRef = ref(storage, path);
+            const result = await listAll(storageRef);
+
             const contentDetails = await Promise.all(
-                result.map(async (item) => {
-                    const contentPath = `${path}/${item}`;
-                    try {
-                        const info = await FileSystem.getInfoAsync(contentPath);
-                        return { name: item, isDirectory: info.isDirectory };
-                    } catch (error) {
-                        console.error(`Error reading ${contentPath}:`, error);
-                        return null;
-                    }
+                result.items.map(async (itemRef) => {
+                    const name = itemRef.name;
+                    const isDirectory = !name.includes('.'); // Si no tiene un punto en el nombre, se considera un directorio
+
+                    return { name, isDirectory };
                 })
             );
 
-            const filteredContent = contentDetails.filter((item) => item !== null);
-            setContents(filteredContent);
+            setContents(contentDetails);
         } catch (error) {
-            console.error('Error reading contents:', error);
+            console.error('Error listing contents:', error);
         }
     };
 
@@ -69,8 +77,12 @@ const DocumentExplorer = () => {
     const createDirectory = async () => {
         if (newDirectoryName.trim() !== '') {
             try {
-                const newDirPath = `${currentPath}/${newDirectoryName}`;
-                await FileSystem.makeDirectoryAsync(newDirPath);
+                const newDirPath = `${currentPath}/${newDirectoryName}/`; // Add a trailing slash for Firebase Storage path
+                const newDirRef = ref(storage, newDirPath);
+
+                // Create a placeholder file inside the folder to simulate its existence
+                await uploadString(newDirRef, '');
+
                 setNewDirectoryName('');
                 listContents(currentPath);
             } catch (error) {
@@ -80,36 +92,6 @@ const DocumentExplorer = () => {
             console.error('Error creating directory: Name is empty');
         }
     };
-
-    const saveFileInfoToStorage = async (fileName, filePath) => {
-        try {
-            const fileInfo = await AsyncStorage.getItem('fileInfo') || '{}';
-            const fileInfoObject = JSON.parse(fileInfo);
-
-            // Almacenar informaci�n del nuevo archivo
-            fileInfoObject[fileName] = filePath;
-
-            // Guardar la informaci�n actualizada
-            await AsyncStorage.setItem('fileInfo', JSON.stringify(fileInfoObject));
-        } catch (error) {
-            console.error('Error saving file info:', error);
-        }
-    };
-
-    // Funci�n para obtener informaci�n de un archivo desde AsyncStorage
-    const getFileInfoFromStorage = async (fileName) => {
-        try {
-            const fileInfo = await AsyncStorage.getItem('fileInfo') || '{}';
-            const fileInfoObject = JSON.parse(fileInfo);
-
-            // Obtener la informaci�n del archivo espec�fico
-            return fileInfoObject[fileName];
-        } catch (error) {
-            console.error('Error getting file info:', error);
-            return null;
-        }
-    };
-
 
     const createPDF = async () => {
         const htmlContent = `
@@ -140,109 +122,178 @@ const DocumentExplorer = () => {
         }
     };
 
-
     const createWord = async () => {
-        if (newFileName !== '') {
-            try {
-                const wordfileName = newFileName + '.docx';
+        try {
+            if (newFileName !== '') {
+                const wordFileName = newFileName + '.docx';
+                const wordFilePath = `${currentPath}/${wordFileName}`;
 
-                const wordFilePath = `${currentPath}/${wordfileName}`;
-                await FileSystem.writeAsStringAsync(wordFilePath, 'Sample word content', {
-                    encoding: FileSystem.EncodingType.UTF8,
+                // Crear contenido del archivo Word
+                const wordContent = 'Sample word content'; // Puedes ajustar el contenido según tus necesidades
+
+                // Subir el archivo Word a Firebase Storage
+                await uploadBytes(ref(appfirebase, wordFilePath), new TextEncoder().encode(wordContent), {
+                    contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                 });
+
+                // Obtener la URL de descarga del archivo Word
+                const downloadURL = await getDownloadURL(ref(appfirebase, wordFilePath));
+
+                console.log('Word creado y almacenado con éxito. URL de descarga:', downloadURL);
+
                 listContents(currentPath);
                 setNewFileName('');
-            } catch (error) {
-                console.error('Error creating word:', error);
+            } else {
+                console.error('Error creating word: Name is empty');
             }
-        } else {
-            console.error('Error creating word: Name is empty');
+        } catch (error) {
+            console.error('Error creating and storing Word:', error);
         }
     };
 
     const createExcel = async () => {
-        if (newFileName !== '') {
-            try {
-                const excelfileName = newFileName + '.xlsx';
+        try {
+            if (newFileName !== '') {
+                const excelFileName = newFileName + '.xlsx';
+                const excelFilePath = `${currentPath}/${excelFileName}`;
 
-                const excelFilePath = `${currentPath}/${excelfileName}`;
-                await FileSystem.writeAsStringAsync(excelFilePath, 'Sample excel content', {
-                    encoding: FileSystem.EncodingType.UTF8,
+                // Crear contenido del archivo Excel (puedes ajustar el contenido según tus necesidades)
+                const excelContent = 'Sample excel content';
+
+                // Subir el archivo Excel a Firebase Storage
+                await uploadBytes(ref(appfirebase, excelFilePath), new TextEncoder().encode(excelContent), {
+                    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 });
+
+                // Obtener la URL de descarga del archivo Excel
+                const downloadURL = await getDownloadURL(ref(appfirebase, excelFilePath));
+
+                console.log('Excel creado y almacenado con éxito. URL de descarga:', downloadURL);
+
                 listContents(currentPath);
                 setNewFileName('');
-            } catch (error) {
-                console.error('Error creating excel:', error);
+            } else {
+                console.error('Error creating excel: Name is empty');
             }
-        } else {
-            console.error('Error creating exel: Name is empty');
+        } catch (error) {
+            console.error('Error creating and storing Excel:', error);
         }
     };
 
     const createPowerPoint = async () => {
-        if (newFileName !== '') {
-            try {
-                const pptfileName = newFileName + '.pptx';
+        try {
+            if (newFileName !== '') {
+                const pptFileName = newFileName + '.pptx';
+                const pptFilePath = `${currentPath}/${pptFileName}`;
 
-                const pptFilePath = `${currentPath}/${pptfileName}`;
-                await FileSystem.writeAsStringAsync(pptFilePath, 'Sample ppt content', {
-                    encoding: FileSystem.EncodingType.UTF8,
+                // Crear contenido del archivo PowerPoint (puedes ajustar el contenido según tus necesidades)
+                const pptContent = 'Sample ppt content';
+
+                // Subir el archivo PowerPoint a Firebase Storage
+                await uploadBytes(ref(appfirebase, pptFilePath), new TextEncoder().encode(pptContent), {
+                    contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
                 });
+
+                // Obtener la URL de descarga del archivo PowerPoint
+                const downloadURL = await getDownloadURL(ref(appfirebase, pptFilePath));
+
+                console.log('PowerPoint creado y almacenado con éxito. URL de descarga:', downloadURL);
+
                 listContents(currentPath);
                 setNewFileName('');
-            } catch (error) {
-                console.error('Error creating ppt:', error);
+            } else {
+                console.error('Error creating powerpoint: Name is empty');
             }
-        } else {
-            console.error('Error creating powerpoint: Name is empty');
+        } catch (error) {
+            console.error('Error creating and storing PowerPoint:', error);
         }
     };
 
     const createText = async () => {
-        if (newFileName !== '') {
-            try {
-                const textfileName = newFileName + '.txt';
+        try {
+            if (newFileName !== '') {
+                const textFileName = newFileName + '.txt';
+                const textFilePath = `${currentPath}/${textFileName}`;
 
-                const textFilePath = `${currentPath}/${textfileName}`;
-                await FileSystem.writeAsStringAsync(textFilePath, 'Sample text content', {
-                    encoding: FileSystem.EncodingType.UTF8,
+                // Crear contenido del archivo de texto (puedes ajustar el contenido según tus necesidades)
+                const textContent = 'Sample text content';
+
+                // Subir el archivo de texto a Firebase Storage
+                await uploadBytes(ref(appfirebase, textFilePath), new TextEncoder().encode(textContent), {
+                    contentType: 'text/plain',
                 });
+
+                // Obtener la URL de descarga del archivo de texto
+                const downloadURL = await getDownloadURL(ref(appfirebase, textFilePath));
+
+                console.log('Texto creado y almacenado con éxito. URL de descarga:', downloadURL);
+
                 listContents(currentPath);
                 setNewFileName('');
-            } catch (error) {
-                console.error('Error creating text:', error);
+            } else {
+                console.error('Error creating text: Name is empty');
             }
-        } else {
-            console.error('Error creating text: Name is empty');
+        } catch (error) {
+            console.error('Error creating and storing Text:', error);
         }
     };
+
+    
 
     const uploadFile = async () => {
         try {
-            const existingDocuments = await AsyncStorage.getItem(folder);
-            let documents = existingDocuments ? JSON.parse(existingDocuments) : [];
-            documents.push(document);
-            await AsyncStorage.setItem(folder, JSON.stringify(documents));
-        } catch (error) {
-            console.error('Error saving document:', error);
-        } 
-    };
+            const result = await DocumentPicker.getDocumentAsync({
+                type: '*/*',
+                copyToCacheDirectory: false,
+            });
 
-    const editItem = async (oldName, editFunction) => {
-        const newName = await promptUserForNewName(oldName);
-        if (newName && newName.trim() !== '') {
-            try {
-                const oldPath = `${currentPath}/${oldName}`;
-                const newPath = `${currentPath}/${newName}`;
-                await editFunction(oldPath, newPath);
-                listContents(currentPath);
-            } catch (error) {
-                console.error(`Error editing ${oldName}:`, error);
-            }
-        } else {
-            console.error('Error editing: Name is empty');
+            const { name, size, uri } = result ?? {};
+
+            console.log('File Details:', { name, size, uri });
+
+            // Specify the path in Firebase Storage (adjust the path as needed)
+            const filePath = `${currentPath}/${name}`;
+
+            // Read the file content as bytes
+            const fileBytes = await FileSystem.readAsStringAsync(uri, {
+                encoding: FileSystem.EncodingType.Base64,
+            });
+
+            // Upload the file to Firebase Storage
+            await uploadBytes(storage.child(filePath), fileBytes, {
+                contentType: 'application/octet-stream', // Adjust based on the file type
+            });
+
+            // Get the download URL of the uploaded file
+            const downloadURL = await getDownloadURL(storageRef.child(filePath));
+
+            console.log('File uploaded successfully. Download URL:', downloadURL);
+
+            // Update the content list after uploading the file
+            listContents(currentPath);
+        } catch (error) {
+            console.error('Error uploading file:', error);
         }
     };
+
+    const editItem = async (oldName, newName) => {
+        try {
+            const oldPath = `${currentPath}/${oldName}`;
+            const newPath = `${currentPath}/${newName}`;
+
+            const storageRef = ref(storage, oldPath);
+            const newStorageRef = ref(storage, newPath);
+
+            // Mover el archivo o directorio a la nueva ubicación (renombrar)
+            await move(storageRef, newStorageRef);
+
+            // Actualizar la lista después de la edición
+            listContents(currentPath);
+        } catch (error) {
+            console.error(`Error editing ${oldName}:`, error);
+        }
+    };
+
 
     const openFile = async (fileName) => {
         try {
@@ -262,8 +313,7 @@ const DocumentExplorer = () => {
                 // Abrir archivo de texto
                 navigation.navigate('FileViewer', { filePath });
             } else {
-                // Si no es un tipo de archivo conocido, intentar abrir con el visor del sistema
-                Linking.openURL(filePath);
+                
             }
         } catch (error) {
             console.error('Error opening file:', error);
@@ -273,7 +323,12 @@ const DocumentExplorer = () => {
     const deleteFile = async (fileName) => {
         try {
             const filePath = `${currentPath}/${fileName}`;
-            await FileSystem.deleteAsync(filePath);
+            const fileRef = ref(storage, filePath);
+
+            // Delete the file from Firebase Storage
+            await deleteObject(fileRef);
+
+            // Update the contents list after deleting the file
             listContents(currentPath);
         } catch (error) {
             console.error('Error deleting file:', error);
@@ -282,8 +337,19 @@ const DocumentExplorer = () => {
 
     const deleteDirectory = async (directoryName) => {
         try {
-            const directoryPath = `${currentPath}/${directoryName}`;
-            await FileSystem.deleteAsync(directoryPath);
+            const directoryPath = `${currentPath}/${directoryName}/`; // Add a trailing slash for Firebase Storage path
+            const directoryRef = ref(storage, directoryPath);
+
+            // List all items in the directory
+            const items = await listAll(directoryRef);
+
+            // Delete all items inside the directory
+            await Promise.all(items.items.map(async (itemRef) => deleteObject(itemRef)));
+
+            // Delete the directory itself
+            await deleteObject(directoryRef);
+
+            // Update the contents list after deleting the directory
             listContents(currentPath);
         } catch (error) {
             console.error('Error deleting directory:', error);
@@ -309,11 +375,8 @@ const DocumentExplorer = () => {
     const handleFileAction = (item) => {
         console.log('Pressed item:', item);
         if (item.isDirectory) {
-            // Pressed a directory, enter it
-            console.log('Current Path:', currentPath);
             setCurrentPath(`${currentPath}/${item.name}`);
         } else {
-            // Pressed a file, handle it
             openFile(item.name);
             console.log(`Handling file: ${item.name}`);
         }
@@ -331,23 +394,29 @@ const DocumentExplorer = () => {
     );
 
     const goBack = () => {
-        if (currentPath === FileSystem.documentDirectory) {
+        const rootPath = '/'; // Adjust this if your root path is different
+
+        if (currentPath === rootPath) {
             navigation.goBack();
         } else {
-            setCurrentPath(currentPath.substring(0, currentPath.lastIndexOf('/')));
+            // Remove the last segment from the current path to go back
+            const lastSegmentIndex = currentPath.lastIndexOf('/');
+            const parentPath = currentPath.substring(0, lastSegmentIndex);
+
+            setCurrentPath(parentPath || rootPath); // Set the root path if no parent path exists
         }
     };
 
     return (
         <View style={styles.container}>
             <StatusBar backgroundColor="#2c3e50" barStyle="default" />
-            
+
             <ScrollView style={styles.scrollView}>
-            {showDocument && (
-    <View style={styles.documentContainer}>
-        <Image source={{ uri: selectedDocumentPath }} style={styles.documentImage} />
-    </View>
-)}
+                {showDocument && (
+                    <View style={styles.documentContainer}>
+                        <Image source={{ uri: selectedDocumentPath }} style={styles.documentImage} />
+                    </View>
+                )}
                 {contents.map((item) => renderDirectoryItem({ item }))}
                 <TouchableOpacity style={styles.buttonadd}
                     onPress={() => {
