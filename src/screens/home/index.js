@@ -16,8 +16,12 @@ import * as FileSystem from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Print from 'expo-print';
+
 //import Files from '../files';
 //import Directory from '../directory';
+
+import * as MediaLibrary from 'expo-media-library';
 
 const DocumentExplorer = () => {
     const [currentPath, setCurrentPath] = useState(FileSystem.documentDirectory);
@@ -82,23 +86,23 @@ const DocumentExplorer = () => {
             const fileInfo = await AsyncStorage.getItem('fileInfo') || '{}';
             const fileInfoObject = JSON.parse(fileInfo);
 
-            // Almacenar información del nuevo archivo
+            // Almacenar informaciï¿½n del nuevo archivo
             fileInfoObject[fileName] = filePath;
 
-            // Guardar la información actualizada
+            // Guardar la informaciï¿½n actualizada
             await AsyncStorage.setItem('fileInfo', JSON.stringify(fileInfoObject));
         } catch (error) {
             console.error('Error saving file info:', error);
         }
     };
 
-    // Función para obtener información de un archivo desde AsyncStorage
+    // Funciï¿½n para obtener informaciï¿½n de un archivo desde AsyncStorage
     const getFileInfoFromStorage = async (fileName) => {
         try {
             const fileInfo = await AsyncStorage.getItem('fileInfo') || '{}';
             const fileInfoObject = JSON.parse(fileInfo);
 
-            // Obtener la información del archivo específico
+            // Obtener la informaciï¿½n del archivo especï¿½fico
             return fileInfoObject[fileName];
         } catch (error) {
             console.error('Error getting file info:', error);
@@ -108,20 +112,31 @@ const DocumentExplorer = () => {
 
 
     const createPDF = async () => {
-        if (newFileName !== '') {
-            try {
-                const pdffileName = newFileName + '.pdf';
-                const pdfFilePath = `${currentPath}/${pdffileName}`;
+        const htmlContent = `
+            <html>
+                <body>
+                    <h1>Hello, this is a PDF!</h1>
+                    <p>You can put your content here.</p>
+                </body>
+            </html>
+        `;
+        try {
+            const { uri } = await Print.printToFileAsync({ html: htmlContent });
 
-                // Guardar información en AsyncStorage
-                await saveFileInfoToStorage(pdffileName, pdfFilePath);
-
-                // Resto del código...
-            } catch (error) {
-                console.error('Error creating pdf:', error);
+            if (Platform.OS === 'ios') {
+                await MediaLibrary.saveToLibraryAsync(uri);
+            } else {
+                    try {
+                        await FileSystem.copyAsync({ from: uri, to: FileSystem.documentDirectory + 'generated2.pdf' });
+                        console.log("success", uri);
+                    } catch(error) {
+                        console.error('Error creating file:', error);
+                    }
+                    // Refresh contents after generating PDF
+                    listContents(currentPath);
             }
-        } else {
-            console.error('Error creating pdf: Name is empty');
+        } catch (error) {
+            console.error('Error generating PDF:', error);
         }
     };
 
@@ -237,7 +252,7 @@ const DocumentExplorer = () => {
 
             if (fileExtension === 'pdf') {
                 // Abrir PDF
-                navigation.navigate('FileViewer', { filePath });
+                navigation.navigate('FileViewer');
             } else if (fileExtension === 'docx' || fileExtension === 'xlsx' || fileExtension === 'pptx') {
                 // Abrir documentos de Word, Excel, PowerPoint
                 // Utiliza react-native-doc-viewer o una biblioteca similar para manejar estos tipos de archivos
