@@ -46,6 +46,7 @@ const DocumentExplorer = () => {
     const [selectedDocumentPath, setSelectedDocumentPath] = useState(null);
     const [showDocument, setShowDocument] = useState(false);
     const Almacenamiento = getStorage(appfirebase);
+    const [uploadProgress, setUploadProgress] = useState(null);
 
     useEffect(() => {
         listContents(currentPath);
@@ -135,9 +136,6 @@ const DocumentExplorer = () => {
             console.error('Error generating PDF:', error);
         }
     };
-
-
-
 
     const createWord = async () => {
         try {
@@ -258,31 +256,42 @@ const DocumentExplorer = () => {
 
 
     const uploadFile = async () => {
-        let result = await DocumentPicker.getDocumentAsync({})
-        if (result != null) {
-            const r = await fetch(result.uri);
-            const b = await r.blob();
-            setFileName(result.name);
-            setBlobFile(b)
-            //setIsChoosed(true) 
-            if (!blobFile) return;
-            const sotrageRef = ref(storage, `${currentPath}/${fileName}`); //LINE A
-            const uploadTask = uploadBytesResumable(sotrageRef, blobFile); //LINE B
-            uploadTask.on(
-                "state_changed", null,
-                (error) => console.log(error),
-                () => {
-                    getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => { //LINE C
-                        console.log("File available at", downloadURL);
-                        isUploadCompleted(true)
-                        return downloadURL
-                    });
-                }
-            );
+        try {
+          const result = await DocumentPicker.getDocumentAsync({
+            copyToCacheDirectory: false,
+          });
+    
+          if (result.type === 'success' && result.uri) {
+            const response = await fetch(result.uri);
+            const blob = await response.blob();
+    
+            const fileName = result.name || 'unnamed';
+    
+            // Construye la referencia al directorio actual
+            const storageRef = ref(Almacenamiento, `${currentPath}/${fileName}`);
+    
+            // Sube el archivo al directorio actual
+            const uploadTask = uploadBytes(storageRef, blob);
+    
+            // Escucha los cambios en el progreso de la carga
+            uploadTask.on('state_changed', (snapshot) => {
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              setUploadProgress(progress);
+            });
+    
+            // Espera a que la carga se complete
+            await uploadTask;
+    
+            console.log(`File '${fileName}' uploaded successfully to Firebase Storage`);
+    
+          } else {
+            console.log('No file selected');
+          }
+        } catch (error) {
+          console.error('Error uploading file:', error);
         }
+    };
 
-
-    }
 
     const editItem = async (oldName, newName) => {
         try {
@@ -305,26 +314,21 @@ const DocumentExplorer = () => {
 
     const openFile = async (fileName) => {
         try {
-            const filePath = `${currentPath}/${fileName}`;
-            const fileExtension = fileName.split('.').pop();
-            console.log('Opening file:', filePath);
-
-            if (fileExtension === 'pdf') {
-                // Abrir PDF
-                navigation.navigate('FileViewer');
-            } else if (fileExtension === 'docx' || fileExtension === 'xlsx' || fileExtension === 'pptx') {
-                // Abrir documentos de Word, Excel, PowerPoint
-                // Utiliza react-native-doc-viewer o una biblioteca similar para manejar estos tipos de archivos
-                // Puedes redirigir al visor del sistema o implementar tu propio visor
-                Linking.openURL(filePath);
-            } else if (fileExtension === 'txt') {
-                // Abrir archivo de texto
-                navigation.navigate('FileViewer', { filePath });
-            } else {
-                Linking.openURL(filePath);
-            }
+          const filePath = `${currentPath}/${fileName}`;
+          const fileExtension = fileName.split('.').pop();
+          console.log('Opening file:', filePath);
+      
+          if (fileExtension === 'pdf') {
+            navigation.navigate('FileViewer', { filePath, fileType: 'pdf' });
+          } else if (['docx', 'xlsx', 'pptx'].includes(fileExtension)) {
+            Linking.openURL(filePath);
+          } else if (fileExtension === 'txt') {
+            navigation.navigate('FileViewer', { filePath, fileType: 'txt' });
+          } else {
+            Linking.openURL(filePath);
+          }
         } catch (error) {
-            console.error('Error opening file:', error);
+          console.error('Error opening file:', error);
         }
     };
 

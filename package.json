@@ -28,6 +28,7 @@
     "react-native-pdf": "^6.7.3",
     "react-native-safe-area-context": "4.6.3",
     "react-native-screens": "~3.22.0",
+    "react-native-signature-canvas": "^4.7.1",
     "yarn": "^1.22.21"
   },
   "devDependencies": {
