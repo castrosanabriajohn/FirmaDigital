@@ -27,9 +27,9 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { appfirebase } from '../../storage/firestorage';
 import * as Print from 'expo-print';
-
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
+import { TextEncoder } from 'text-encoding';
 
 import * as MediaLibrary from 'expo-media-library';
 
@@ -109,7 +109,26 @@ const DocumentExplorer = () => {
             const { uri } = await Print.printToFileAsync({ html: htmlContent });
 
             if (Platform.OS === 'ios') {
-                await MediaLibrary.saveToLibraryAsync(uri);
+                try {
+                    await MediaLibrary.saveToLibraryAsync(uri);
+
+                    // Upload the PDF to Firebase Storage
+                    const response = await fetch(uri);
+                    const blob = await response.blob();
+
+                    // Build the reference to the current directory in Firebase Storage
+                    const storageRef = ref(Almacenamiento, `${currentPath}/${pdfFileName}`);
+
+                    // Upload the PDF to Firebase Storage
+                    await uploadBytes(storageRef, blob);
+
+                    console.log(`PDF '${pdfFileName}' uploaded successfully to Firebase Storage in '${currentPath}'`);
+                    listContents(currentPath);
+
+                } catch (error) {
+                    console.error('Error uploading or saving PDF:', error);
+                    Alert.alert('Error', 'Failed to upload or save PDF file.');
+                }
             } else {
                 try {
                     await FileSystem.copyAsync({ from: uri, to: FileSystem.documentDirectory + pdfFileName });
@@ -125,39 +144,61 @@ const DocumentExplorer = () => {
                     await uploadBytes(storageRef, blob);
 
                     console.log(`PDF '${pdfFileName}' uploaded successfully to Firebase Storage in '${currentPath}'`);
+                    listContents(currentPath);
 
                 } catch (error) {
-                    console.error('Error creating or uploading file:', error);
+                    console.error('Error uploading or saving PDF:', error);
+                    Alert.alert('Error', 'Failed to upload or save PDF file.');
                 }
             }
         } catch (error) {
             console.error('Error generating PDF:', error);
         }
+
     };
 
     const createWord = async () => {
         try {
             if (newFileName !== '') {
-                const wordFileName = newFileName + '.docx';
+                const wordFileName = `${newFileName}.docx`;
                 const wordFilePath = `${currentPath}/${wordFileName}`;
-
-                // Crear contenido del archivo Word
-                const wordContent = 'Sample word content'; // Puedes ajustar el contenido según tus necesidades
-
-                // Subir el archivo Word a Firebase Storage
-                await uploadBytes(ref(appfirebase, wordFilePath), new TextEncoder().encode(wordContent), {
+    
+                // Generate Word content (using XML)
+                const wordContent = `
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+                        <w:body>
+                            <w:p>
+                                <w:r>
+                                    <w:t>Hello, this is a Word document!</w:t>
+                                </w:r>
+                            </w:p>
+                            <w:p>
+                                <w:r>
+                                    <w:t>This is a sample paragraph.</w:t>
+                                </w:r>
+                            </w:p>
+                        </w:body>
+                    </w:document>
+                `;
+    
+                // Use TextEncoder from text-encoding library
+                const textEncoder = new TextEncoder();
+    
+                // Upload the Word file to Firebase Storage
+                await uploadBytes(ref(Almacenamiento, wordFilePath), textEncoder.encode(wordContent), {
                     contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                 });
-
-                // Obtener la URL de descarga del archivo Word
-                const downloadURL = await getDownloadURL(ref(appfirebase, wordFilePath));
-
-                console.log('Word creado y almacenado con éxito. URL de descarga:', downloadURL);
-
+    
+                // Get the download URL for the Word file
+                const downloadURL = await getDownloadURL(ref(Almacenamiento, wordFilePath));
+    
+                console.log('Word created and stored successfully. Download URL:', downloadURL);
+    
                 listContents(currentPath);
                 setNewFileName('');
             } else {
-                console.error('Error creating word: Name is empty');
+                console.error('Error creating Word: Name is empty');
             }
         } catch (error) {
             console.error('Error creating and storing Word:', error);
@@ -167,26 +208,26 @@ const DocumentExplorer = () => {
     const createExcel = async () => {
         try {
             if (newFileName !== '') {
-                const excelFileName = newFileName + '.xlsx';
+                const excelFileName = `${newFileName}.xlsx`;
                 const excelFilePath = `${currentPath}/${excelFileName}`;
-
-                // Crear contenido del archivo Excel (puedes ajustar el contenido según tus necesidades)
+    
+                // Create Excel content (you can adjust the content as needed)
                 const excelContent = 'Sample excel content';
-
-                // Subir el archivo Excel a Firebase Storage
-                await uploadBytes(ref(appfirebase, excelFilePath), new TextEncoder().encode(excelContent), {
+    
+                // Upload the Excel file to Firebase Storage
+                await uploadBytes(ref(Almacenamiento, excelFilePath), new TextEncoder().encode(excelContent), {
                     contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 });
-
-                // Obtener la URL de descarga del archivo Excel
-                const downloadURL = await getDownloadURL(ref(appfirebase, excelFilePath));
-
-                console.log('Excel creado y almacenado con éxito. URL de descarga:', downloadURL);
-
+    
+                // Get the download URL for the Excel file
+                const downloadURL = await getDownloadURL(ref(Almacenamiento, excelFilePath));
+    
+                console.log('Excel created and stored successfully. Download URL:', downloadURL);
+    
                 listContents(currentPath);
                 setNewFileName('');
             } else {
-                console.error('Error creating excel: Name is empty');
+                console.error('Error creating Excel: Name is empty');
             }
         } catch (error) {
             console.error('Error creating and storing Excel:', error);
@@ -196,26 +237,26 @@ const DocumentExplorer = () => {
     const createPowerPoint = async () => {
         try {
             if (newFileName !== '') {
-                const pptFileName = newFileName + '.pptx';
+                const pptFileName = `${newFileName}.pptx`;
                 const pptFilePath = `${currentPath}/${pptFileName}`;
-
-                // Crear contenido del archivo PowerPoint (puedes ajustar el contenido según tus necesidades)
+    
+                // Create PowerPoint content (you can adjust the content as needed)
                 const pptContent = 'Sample ppt content';
-
-                // Subir el archivo PowerPoint a Firebase Storage
-                await uploadBytes(ref(appfirebase, pptFilePath), new TextEncoder().encode(pptContent), {
+    
+                // Upload the PowerPoint file to Firebase Storage
+                await uploadBytes(ref(Almacenamiento, pptFilePath), new TextEncoder().encode(pptContent), {
                     contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
                 });
-
-                // Obtener la URL de descarga del archivo PowerPoint
-                const downloadURL = await getDownloadURL(ref(appfirebase, pptFilePath));
-
-                console.log('PowerPoint creado y almacenado con éxito. URL de descarga:', downloadURL);
-
+    
+                // Get the download URL for the PowerPoint file
+                const downloadURL = await getDownloadURL(ref(Almacenamiento, pptFilePath));
+    
+                console.log('PowerPoint created and stored successfully. Download URL:', downloadURL);
+    
                 listContents(currentPath);
                 setNewFileName('');
             } else {
-                console.error('Error creating powerpoint: Name is empty');
+                console.error('Error creating PowerPoint: Name is empty');
             }
         } catch (error) {
             console.error('Error creating and storing PowerPoint:', error);
@@ -225,22 +266,22 @@ const DocumentExplorer = () => {
     const createText = async () => {
         try {
             if (newFileName !== '') {
-                const textFileName = newFileName + '.txt';
+                const textFileName = `${newFileName}.txt`;
                 const textFilePath = `${currentPath}/${textFileName}`;
-
-                // Crear contenido del archivo de texto (puedes ajustar el contenido según tus necesidades)
+    
+                // Create text content (you can adjust the content as needed)
                 const textContent = 'Sample text content';
-
-                // Subir el archivo de texto a Firebase Storage
-                await uploadBytes(ref(appfirebase, textFilePath), new TextEncoder().encode(textContent), {
+    
+                // Upload the text file to Firebase Storage
+                await uploadBytes(ref(Almacenamiento, textFilePath), new TextEncoder().encode(textContent), {
                     contentType: 'text/plain',
                 });
-
-                // Obtener la URL de descarga del archivo de texto
-                const downloadURL = await getDownloadURL(ref(appfirebase, textFilePath));
-
-                console.log('Texto creado y almacenado con éxito. URL de descarga:', downloadURL);
-
+    
+                // Get the download URL for the text file
+                const downloadURL = await getDownloadURL(ref(Almacenamiento, textFilePath));
+    
+                console.log('Text created and stored successfully. Download URL:', downloadURL);
+    
                 listContents(currentPath);
                 setNewFileName('');
             } else {
@@ -251,15 +292,11 @@ const DocumentExplorer = () => {
         }
     };
 
-
-
     const uploadFile = async () => {
         try {
-            const result = await DocumentPicker.getDocumentAsync({
-                copyToCacheDirectory: false,
-            });
+            const result = await DocumentPicker.getDocumentAsync({ type: '*/*'});
 
-            if (result.type === 'success' && result.uri) {
+            if (result.type === 'success') {
                 const response = await fetch(result.uri);
                 const blob = await response.blob();
 
@@ -289,7 +326,8 @@ const DocumentExplorer = () => {
                 console.log('No file selected');
             }
         } catch (error) {
-            console.error('Error uploading file:', error);
+            console.error('Error uploading or saving PDF:', error);
+            Alert.alert('Error', 'Failed to upload or save PDF file.');
         }
     };
 
