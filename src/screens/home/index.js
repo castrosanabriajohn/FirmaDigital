@@ -10,7 +10,8 @@ import {
     Modal,
     ScrollView,
     Image,
-    Linking
+    Linking,
+    Alert
 } from 'react-native';
 import {
     getStorage,
@@ -51,9 +52,6 @@ const DocumentExplorer = () => {
     useEffect(() => {
         listContents(currentPath);
     }, [currentPath]);
-
-
-
 
     const listContents = async (path) => {
         try {
@@ -257,38 +255,41 @@ const DocumentExplorer = () => {
 
     const uploadFile = async () => {
         try {
-          const result = await DocumentPicker.getDocumentAsync({
-            copyToCacheDirectory: false,
-          });
-    
-          if (result.type === 'success' && result.uri) {
-            const response = await fetch(result.uri);
-            const blob = await response.blob();
-    
-            const fileName = result.name || 'unnamed';
-    
-            // Construye la referencia al directorio actual
-            const storageRef = ref(Almacenamiento, `${currentPath}/${fileName}`);
-    
-            // Sube el archivo al directorio actual
-            const uploadTask = uploadBytes(storageRef, blob);
-    
-            // Escucha los cambios en el progreso de la carga
-            uploadTask.on('state_changed', (snapshot) => {
-              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-              setUploadProgress(progress);
+            const result = await DocumentPicker.getDocumentAsync({
+                copyToCacheDirectory: false,
             });
-    
-            // Espera a que la carga se complete
-            await uploadTask;
-    
-            console.log(`File '${fileName}' uploaded successfully to Firebase Storage`);
-    
-          } else {
-            console.log('No file selected');
-          }
+
+            if (result.type === 'success' && result.uri) {
+                const response = await fetch(result.uri);
+                const blob = await response.blob();
+
+                const fileName = result.name || 'unnamed';
+
+                // Construye la referencia al directorio actual
+                const storageRef = ref(Almacenamiento, `${currentPath}/${fileName}`);
+
+                // Sube el archivo al directorio actual
+                const uploadTask = uploadBytesResumable(storageRef, blob);
+
+                // Escucha los cambios en el progreso de la carga
+                uploadTask.on('state_changed', (snapshot) => {
+                    const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                    setUploadProgress(progress);
+                });
+
+                // Espera a que la carga se complete
+                await uploadTask;
+
+                // Obtiene la URL de descarga del archivo
+                const downloadURL = await getDownloadURL(storageRef);
+
+                console.log(`File '${fileName}' uploaded successfully to Firebase Storage`);
+                console.log('Download URL:', downloadURL);
+            } else {
+                console.log('No file selected');
+            }
         } catch (error) {
-          console.error('Error uploading file:', error);
+            console.error('Error uploading file:', error);
         }
     };
 
@@ -311,25 +312,66 @@ const DocumentExplorer = () => {
         }
     };
 
+    const downloadFile = async (fileName) => {
+        try {
+
+            const filePath = `${currentPath}/${fileName}`;
+
+            const fileRef = ref(Almacenamiento, filePath);
+
+            // Obtén el enlace de descarga del archivo
+            const downloadURL = await getDownloadURL(fileRef);
+
+            // Abre el enlace utilizando Linking
+            await Linking.openURL(downloadURL);
+
+        } catch (error) {
+            console.error('Error al descargar y abrir el archivo:', error);
+        }
+    }
+
 
     const openFile = async (fileName) => {
         try {
-          const filePath = `${currentPath}/${fileName}`;
-          const fileExtension = fileName.split('.').pop();
-          console.log('Opening file:', filePath);
-      
-          if (fileExtension === 'pdf') {
-            navigation.navigate('FileViewer', { filePath, fileType: 'pdf' });
-          } else if (['docx', 'xlsx', 'pptx'].includes(fileExtension)) {
-            Linking.openURL(filePath);
-          } else if (fileExtension === 'txt') {
-            navigation.navigate('FileViewer', { filePath, fileType: 'txt' });
-          } else {
-            Linking.openURL(filePath);
-          }
+            const filePath = `${currentPath}/${fileName}`;
+            const fileExtension = fileName.split('.').pop();
+            console.log('Opening file:', filePath);
+
+            if (fileExtension === 'pdf') {
+                navigation.navigate('FileViewer', { filePath, fileType: 'pdf' });
+            } else if (['docx', 'xlsx', 'pptx'].includes(fileExtension)) {
+                navigation.navigate('FileViewer', { filePath, fileType: fileExtension });
+            } else if (fileExtension === 'txt') {
+                navigation.navigate('FileViewer', { filePath, fileType: 'txt' });
+            } else {
+                Linking.openURL(filePath);
+            }
         } catch (error) {
-          console.error('Error opening file:', error);
+            console.error('Error opening file:', error);
         }
+    };
+
+    const showAlert = (fileName) => {
+        Alert.alert(
+            'Select Action',
+            `What action do you want to perform with ${fileName}?`,
+            [
+                {
+                    text: 'Download File',
+                    onPress: () => downloadFile(fileName),
+                },
+                {
+                    text: 'Open File',
+                    onPress: () => openFile(fileName),
+                },
+                {
+                    text: 'Cancel',
+                    onPress: () => console.log('Cancel'),
+                    style: 'cancel',
+                },
+            ],
+            { cancelable: false }
+        );
     };
 
     const deleteFile = async (fileName) => {
@@ -389,7 +431,7 @@ const DocumentExplorer = () => {
         if (item.isDirectory) {
             setCurrentPath(`${currentPath}/${item.name}`);
         } else {
-            openFile(item.name);
+            showAlert(item.name);
             console.log(`Handling file: ${item.name}`);
         }
     };
