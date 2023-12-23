@@ -15,7 +15,7 @@
     "@react-navigation/stack": "^6.0.11",
     "base-64": "^1.0.0",
     "docxtemplater": "^3.42.7",
-    "expo": "~49.0.15",
+    "expo": "^49.0.21",
     "expo-document-picker": "~11.5.4",
     "expo-file-system": "~15.4.5",
     "expo-intent-launcher": "^10.7.0",
@@ -31,6 +31,7 @@
     "react-native-pdf-lib": "^1.0.0",
     "react-native-safe-area-context": "4.6.3",
     "react-native-screens": "~3.22.0",
+    "react-native-share": "^10.0.2",
     "react-native-signature-canvas": "^4.7.1",
     "text-encoding": "^0.7.0",
     "yarn": "^1.22.21"

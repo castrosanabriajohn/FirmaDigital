@@ -1,51 +1,14 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, Button, StyleSheet, Linking } from 'react-native';
 import { WebView } from 'react-native-webview';
 import Signature from 'react-native-signature-canvas';
-import {
-    getStorage,
-    ref,
-    listAll,
-    uploadString,
-    deleteObject,
-    getDownloadURL,
-    move,
-    uploadBytes,
-    uploadBytesResumable
-} from 'firebase/storage';
 import { appfirebase } from '../../storage/firestorage';
 
-
-const FileViewer = (filePath, fileType) => {
+const FileViewer = () => {
     const [modalVisible, setModalVisible] = useState(false);
     const [signatureImage, setSignatureImage] = useState(null);
     const [documentUrl, setDocumentUrl] = useState();
     const signatureRef = useRef(null);
-    const Almacenamiento = getStorage(appfirebase);
-    
-    
-    useEffect(() => {
-        const loadDocumentUrl = async (filePath) => {
-            try {
-                if (typeof filePath !== 'string') {
-                    console.error('La ruta del archivo no es una cadena de texto válida.');
-                    return;
-                }
-        
-                // Asegúrate de manejar espacios y caracteres especiales en filePath
-                const encodedFilePath = encodeURIComponent(filePath);
-        
-                const storageRef = getStorage(appfirebase);
-                const fileRef = ref(storageRef, encodedFilePath);
-                const downloadURL = await getDownloadURL(fileRef);
-                setDocumentUrl(downloadURL);
-            } catch (error) {
-                console.error('Error obteniendo la URL del documento:', error);
-            }
-        };
-
-        loadDocumentUrl();
-    }, [filePath]);
 
     const handleSignature = async (signature) => {
         // Handle the signature data
@@ -58,19 +21,15 @@ const FileViewer = (filePath, fileType) => {
         setModalVisible(false);
     };
 
-    
+    const FileUrl = 'https://firebasestorage.googleapis.com/v0/b/firma-digital-25ba6.appspot.com/o/Documentos%2FTrabajo%20de%20investigacion%20Grupal.pdf?alt=media&token=0bc431c9-31c5-42a6-bec9-82ae762f19a3';
 
     const handleOpenInExternalApp = async () => {
+        // Intenta abrir el enlace en la aplicación por defecto para manejar archivos PDF
         try {
-            if (!FileUrl) {
-                console.error('La URL del documento no está definida.');
-                return;
-            }
-
             const supported = await Linking.canOpenURL(FileUrl);
 
             if (supported) {
-                await Linking.openURL(FileUrl);
+                await Linking.openURL(documentUrl);
             } else {
                 console.error('No se puede abrir el enlace en la aplicación externa.');
             }
@@ -80,7 +39,7 @@ const FileViewer = (filePath, fileType) => {
     };
 
     const handleDownload = () => {
-        const url = FileUrl;
+        const url = 'https://firebasestorage.googleapis.com/v0/b/firma-digital-25ba6.appspot.com/o/Documentos%2FTrabajo%20de%20investigacion%20Grupal.pdf?alt=media&token=0bc431c9-31c5-42a6-bec9-82ae762f19a3';
 
         // Abre el enlace directamente en el navegador o en la aplicación por defecto para archivos PDF
         Linking.openURL(url).catch((err) => console.error('Error al abrir el enlace:', err));
@@ -94,9 +53,15 @@ const FileViewer = (filePath, fileType) => {
         setModalVisible(false);
     };
 
-    const handleSaveSignature = () => {
-        // Guardar el documento con la firma en Firebase Storage
-        saveDocumentWithSignature(signatureImage);
+    const handleSaveSignature = async () => {
+        try {
+          // Guardar el documento con la firma en Firebase Storage
+          const signatureImage = await signatureRef.current?.saveSignature();
+          await saveDocumentWithSignature(signatureImage);
+          setModalVisible(false);
+        } catch (error) {
+          console.error('Error saving signature:', error);
+        }
     };
 
     const saveDocumentWithSignature = async (signatureImage) => {
@@ -110,7 +75,7 @@ const FileViewer = (filePath, fileType) => {
         <View style={styles.container}>
             {Platform.OS === 'ios' ? (
             <WebView
-                source={{ uri: FileUrl }}
+                source={{ uri: 'https://firebasestorage.googleapis.com/v0/b/firma-digital-25ba6.appspot.com/o/Documentos%2FTrabajo%20de%20investigacion%20Grupal.pdf?alt=media&token=0bc431c9-31c5-42a6-bec9-82ae762f19a3' }}
                 style={styles.webview}
             />
         ) : (
@@ -120,7 +85,7 @@ const FileViewer = (filePath, fileType) => {
             
             
             <TouchableOpacity style={styles.buttonOptions} onPress={() => setModalVisible(true)}>
-                <Text style={styles.plusText}>Sign</Text>
+                <Text style={styles.plusText}>+</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.buttondescargar} onPress={handleDownload}>
                 <Text style={styles.plusText}>↓</Text>

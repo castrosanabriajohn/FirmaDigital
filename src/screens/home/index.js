@@ -11,7 +11,8 @@ import {
     ScrollView,
     Image,
     Linking,
-    Alert
+    Alert,
+    Share
 } from 'react-native';
 import {
     getStorage,
@@ -30,8 +31,6 @@ import * as Print from 'expo-print';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { TextEncoder } from 'text-encoding';
-
-import * as MediaLibrary from 'expo-media-library';
 
 const DocumentExplorer = () => {
     const [currentPath, setCurrentPath] = useState('/');
@@ -110,10 +109,10 @@ const DocumentExplorer = () => {
 
             if (Platform.OS === 'ios') {
                 try {
-                    await MediaLibrary.saveToLibraryAsync(uri);
+                    // Explicitly specify the content type as application/pdf
+                    const response = await fetch(uri, { headers: { 'Content-Type': 'application/pdf' } });
 
                     // Upload the PDF to Firebase Storage
-                    const response = await fetch(uri);
                     const blob = await response.blob();
 
                     // Build the reference to the current directory in Firebase Storage
@@ -124,7 +123,6 @@ const DocumentExplorer = () => {
 
                     console.log(`PDF '${pdfFileName}' uploaded successfully to Firebase Storage in '${currentPath}'`);
                     listContents(currentPath);
-
                 } catch (error) {
                     console.error('Error uploading or saving PDF:', error);
                     Alert.alert('Error', 'Failed to upload or save PDF file.');
@@ -162,39 +160,52 @@ const DocumentExplorer = () => {
             if (newFileName !== '') {
                 const wordFileName = `${newFileName}.docx`;
                 const wordFilePath = `${currentPath}/${wordFileName}`;
-    
-                // Generate Word content (using XML)
-                const wordContent = `
-                    <?xml version="1.0" encoding="UTF-8"?>
-                    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-                        <w:body>
-                            <w:p>
-                                <w:r>
-                                    <w:t>Hello, this is a Word document!</w:t>
-                                </w:r>
-                            </w:p>
-                            <w:p>
-                                <w:r>
-                                    <w:t>This is a sample paragraph.</w:t>
-                                </w:r>
-                            </w:p>
-                        </w:body>
-                    </w:document>
+
+                // Plantilla del documento Word con marcadores de posición
+                const wordTemplate = `
+                    <html>
+                        <head>
+                            <style>
+                                body {
+                                    font-family: Arial, sans-serif;
+                                }
+                            </style>
+                        </head>
+                        <body>
+                            <h1>{{greeting}}</h1>
+                            <p>{{paragraph}}</p>
+                        </body>
+                    </html>
                 `;
-    
-                // Use TextEncoder from text-encoding library
+
+                // Datos para reemplazar los marcadores de posición
+                const data = {
+                    greeting: 'Hello, this is a Word document!',
+                    paragraph: 'This is a sample paragraph.',
+                };
+
+                // Reemplazar marcadores de posición en la plantilla
+                let wordContent = wordTemplate;
+                Object.keys(data).forEach((key) => {
+                    const placeholder = `{{${key}}}`;
+                    const value = data[key];
+                    wordContent = wordContent.replace(new RegExp(placeholder, 'g'), value);
+                });
+
+                // Convertir el contenido a un ArrayBuffer
                 const textEncoder = new TextEncoder();
-    
-                // Upload the Word file to Firebase Storage
-                await uploadBytes(ref(Almacenamiento, wordFilePath), textEncoder.encode(wordContent), {
+                const buffer = textEncoder.encode(wordContent);
+
+                // Subir el archivo Word a Firebase Storage
+                await uploadBytes(ref(Almacenamiento, wordFilePath), buffer, {
                     contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                 });
-    
-                // Get the download URL for the Word file
+
+                // Obtener la URL de descarga para el archivo Word
                 const downloadURL = await getDownloadURL(ref(Almacenamiento, wordFilePath));
-    
+
                 console.log('Word created and stored successfully. Download URL:', downloadURL);
-    
+
                 listContents(currentPath);
                 setNewFileName('');
             } else {
@@ -205,25 +216,26 @@ const DocumentExplorer = () => {
         }
     };
 
+
     const createExcel = async () => {
         try {
             if (newFileName !== '') {
                 const excelFileName = `${newFileName}.xlsx`;
                 const excelFilePath = `${currentPath}/${excelFileName}`;
-    
+
                 // Create Excel content (you can adjust the content as needed)
                 const excelContent = 'Sample excel content';
-    
+
                 // Upload the Excel file to Firebase Storage
                 await uploadBytes(ref(Almacenamiento, excelFilePath), new TextEncoder().encode(excelContent), {
                     contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 });
-    
+
                 // Get the download URL for the Excel file
                 const downloadURL = await getDownloadURL(ref(Almacenamiento, excelFilePath));
-    
+
                 console.log('Excel created and stored successfully. Download URL:', downloadURL);
-    
+
                 listContents(currentPath);
                 setNewFileName('');
             } else {
@@ -239,20 +251,20 @@ const DocumentExplorer = () => {
             if (newFileName !== '') {
                 const pptFileName = `${newFileName}.pptx`;
                 const pptFilePath = `${currentPath}/${pptFileName}`;
-    
+
                 // Create PowerPoint content (you can adjust the content as needed)
                 const pptContent = 'Sample ppt content';
-    
+
                 // Upload the PowerPoint file to Firebase Storage
                 await uploadBytes(ref(Almacenamiento, pptFilePath), new TextEncoder().encode(pptContent), {
                     contentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
                 });
-    
+
                 // Get the download URL for the PowerPoint file
                 const downloadURL = await getDownloadURL(ref(Almacenamiento, pptFilePath));
-    
+
                 console.log('PowerPoint created and stored successfully. Download URL:', downloadURL);
-    
+
                 listContents(currentPath);
                 setNewFileName('');
             } else {
@@ -268,20 +280,20 @@ const DocumentExplorer = () => {
             if (newFileName !== '') {
                 const textFileName = `${newFileName}.txt`;
                 const textFilePath = `${currentPath}/${textFileName}`;
-    
+
                 // Create text content (you can adjust the content as needed)
                 const textContent = 'Sample text content';
-    
+
                 // Upload the text file to Firebase Storage
                 await uploadBytes(ref(Almacenamiento, textFilePath), new TextEncoder().encode(textContent), {
                     contentType: 'text/plain',
                 });
-    
+
                 // Get the download URL for the text file
                 const downloadURL = await getDownloadURL(ref(Almacenamiento, textFilePath));
-    
+
                 console.log('Text created and stored successfully. Download URL:', downloadURL);
-    
+
                 listContents(currentPath);
                 setNewFileName('');
             } else {
@@ -294,7 +306,7 @@ const DocumentExplorer = () => {
 
     const uploadFile = async () => {
         try {
-            const result = await DocumentPicker.getDocumentAsync({ type: '*/*'});
+            const result = await DocumentPicker.getDocumentAsync({ type: '*/*' });
 
             if (result.type === 'success') {
                 const response = await fetch(result.uri);
@@ -389,25 +401,62 @@ const DocumentExplorer = () => {
         }
     };
 
+    const shareDocument = async (fileName) => {
+        try {
+            const filePath = `${currentPath}/${fileName}`;
+            const fileRef = ref(Almacenamiento, filePath);
+            const downloadURL = await getDownloadURL(fileRef);
+
+            const result = await Share.share({
+                title: 'Compartir documento',
+                message: `Echa un vistazo a este documento: ${downloadURL}`,
+                url: downloadURL,
+                type: 'application/pdf'
+            });
+
+            if (result.action === Share.sharedAction) {
+                if (result.activityType) {
+                    // shared with activity type of result.activityType
+                } else {
+                    // shared
+                }
+            } else if (result.action === Share.dismissedAction) {
+                // dismissed
+            }
+        } catch (error) {
+            Alert.alert(error.message);
+        }
+    };
+
     const showAlert = (fileName) => {
+        const options = [
+            {
+                text: 'Download File',
+                onPress: () => downloadFile(fileName),
+            },
+            {
+                text: 'Open File',
+                onPress: () => openFile(fileName),
+            },
+            {
+                text: 'Cancel',
+                onPress: () => console.log('Cancel'),
+                style: 'cancel',
+            },
+        ];
+    
+        // Agregar la opción de compartir solo en iOS
+        if (Platform.OS === 'ios') {
+            options.push({
+                text: 'Share File',
+                onPress: () => shareDocument(fileName),
+            });
+        }
+    
         Alert.alert(
             'Select Action',
             `What action do you want to perform with ${fileName}?`,
-            [
-                {
-                    text: 'Download File',
-                    onPress: () => downloadFile(fileName),
-                },
-                {
-                    text: 'Open File',
-                    onPress: () => openFile(fileName),
-                },
-                {
-                    text: 'Cancel',
-                    onPress: () => console.log('Cancel'),
-                    style: 'cancel',
-                },
-            ],
+            options,
             { cancelable: false }
         );
     };
